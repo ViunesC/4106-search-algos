@@ -280,7 +280,6 @@ public class Maze {
                     // If not a barricade tile, add to queue
                     if (map[next.x+r][next.y+c] == 0 || map[next.x+r][next.y+c] == 2) {
                         // System.out.println("Adding (" + (next.x+r) + "," + (next.y+c) + ")");
-                        cordMatrix[next.x+r][next.y+c].incrementG();
                         toBeExplored.add(cordMatrix[next.x+r][next.y+c]);
                     }
                 }
@@ -380,6 +379,7 @@ public class Maze {
                     // If not a barricade tile, add to queue
                     if (map[current.x+r][current.y+c] == 0 || map[current.x+r][current.y+c] == 2) {
                         // System.out.println("Adding (" + (current.x+r) + "," + (current.y+c) + ")");
+                        cordMatrix[current.x+r][current.y+c].incrementG();
                         toBeExplored.add(cordMatrix[current.x+r][current.y+c]);
                     }
                 }
