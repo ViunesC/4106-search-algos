@@ -9,17 +9,54 @@ import java.util.*;
  * December 10th, 2024
  */
 public class Maze {
+    private static class Tuple {
+        double priority;
+        Cord cord;
+
+        private Tuple(double priority, Cord cord) {
+            this.priority = priority;
+            this.cord = cord;
+        }
+
+        private int compareTo(Tuple other) {
+            return Double.compare(this.priority, other.priority);
+        }
+    }
+
     private static class Cord {
         private int x;
         private int y;
-        private double g;
         private Cord(int x, int y) {
             this.x = x;
             this.y = y;
-            this.g = 0.0;
         }
-        private void incrementG() {
-            this.g++;
+    }
+
+    private static class MyPriorityQueue {
+        private List<Tuple> queue;
+
+        private MyPriorityQueue() {
+            this.queue = new ArrayList<>();
+        }
+
+        private int size() { return queue.size();}
+
+        private boolean isEmpty() { return queue.isEmpty(); }
+
+        private void enqueue (double priority, Cord item) {
+            queue.add(new Tuple(priority,item));
+            onUpdate();
+        }
+
+        private Cord dequeue() {
+            if (!isEmpty())
+                return queue.remove(0).cord;
+            else
+                throw new ArrayIndexOutOfBoundsException("Empty list");
+        }
+
+        private void onUpdate() {
+            queue.sort(Tuple::compareTo);
         }
     }
 
@@ -251,8 +288,11 @@ public class Maze {
         while (!toBeExplored.isEmpty() && !completed) {
             next = toBeExplored.poll();
             // System.out.println("Checking (" + next.x + "," + next.y + ")");
-            if (displayEachStep)
-                System.out.println("Iteration " + numIteration++ + ":\n");
+            numIteration++;
+            if (displayEachStep) {
+                System.out.println("Iteration " + numIteration + ":\n");
+                System.out.println(printCurrent(next) + "\n");
+            }
 
             if (explored.contains(next))
                 continue;
@@ -285,15 +325,13 @@ public class Maze {
                 }
             }
             explored.add(next);
-            if (displayEachStep)
-                System.out.println(printCurrent(next) + "\n");
         }
 
         long end = System.currentTimeMillis();
-        if (completed) {
-            System.out.println("AI have reached the destination!");
-        } else
-            System.out.println("There is no path that lead to destination");
+        if (completed)
+            System.out.println("AI have reached the destination!\n");
+        else
+            System.out.println("Failed to reach the destination\n");
 
         System.out.println("Search completed. Time elapsed: " + (end-start) + " ms.");
         System.out.println("Total iteration used: " + numIteration);
@@ -307,97 +345,74 @@ public class Maze {
      * @param displayEachStep true to print state of the maze for each iteration, false to hide them
      */
     public void a_star(int src_row, int src_col, boolean displayEachStep) {
-        updateStart(src_row, src_col);
+        if (src_row < 0 || src_row >= height || src_col < 0 || src_col >= width)
+            throw new IllegalArgumentException("Source coordinates must be valid");
 
-        if (src_row >= height || src_col >= width)
-            throw new IllegalArgumentException("Source cordinates must be valid");
+        Cord[][] cord_list = new Cord[height][width];
+        for (int r=0;r<height;++r)
+            for (int c=0;c<width;++c)
+                cord_list[r][c] = new Cord(r,c);
 
-        Cord[][] cordMatrix = new Cord[height][width];
-        for (int r=0;r<map.length;++r)
-            for (int c=0;c<map[r].length;++c)
-                cordMatrix[r][c] = new Cord(r,c);
+        start_tile.x = src_row;
+        start_tile.y = src_col;
 
-
-        Cord src = cordMatrix[src_row][src_col];
-        if (map[src_row][src_col] == 1) {
-            System.out.println("This point cannot be the start point. Try again");
-            return;
-        } else if (map[src_row][src_col] == 2) {
-            System.out.println("Game over!");
-            return;
-        }
-
-        Set<Cord> explored = new HashSet<>();
-        PriorityQueue<Cord> toBeExplored = new PriorityQueue<>(Maze::compare_prio);
-
-        // Flag indicating the destination has been reached
-        boolean completed = false;
-        Cord current;
-        Cord dest = new Cord(0,0);
+        MyPriorityQueue frontier = new MyPriorityQueue();
+        Cord current, next;
+        Map<Cord, Double> cost_so_far = new Hashtable<>();
+        boolean success = false;
+        double new_cost, f;
+        int[][] neighbors = {{-1,-1},{0,-1},{-1,0},{0,1},{1,0},{1,1}};
         int numIteration = 0;
-
-        for (int r=0;r<cordMatrix.length;++r)
-            for (int c=0;c<cordMatrix[r].length;++c)
-                if (map[r][c] == 2) {
-                    dest = cordMatrix[r][c];
-                    break;
-                }
 
         System.out.println("====Start searching for goal tile using A*====");
         long start = System.currentTimeMillis();
 
-        toBeExplored.add(src);
-        while (!toBeExplored.isEmpty() && !completed) {
-            current = toBeExplored.poll();
-            // System.out.println("Checking (" + current.x + "," + current.y + ")");
-            if (displayEachStep)
-                System.out.println("Iteration " + numIteration++ + ":\n");
+        frontier.enqueue(0.0,cord_list[start_tile.x][start_tile.y]);
+        cost_so_far.put(cord_list[start_tile.x][start_tile.y], 0.0);
+        while (!frontier.isEmpty()) {
+            current = frontier.dequeue();
 
-            if (explored.contains(current))
-                break;
-
-            if (current.x == dest.x && current.y == dest.y) {
-                completed = true;
-                continue;
+            numIteration++;
+            if (displayEachStep) {
+                System.out.println("Iteration " + numIteration + ":\n");
+                System.out.println(printCurrent(current) + "\n");
             }
 
-            // Add all possible surrounding tiles into queue
-            for (int r=-1;r<2;++r) {
-                if (current.x + r < 0 || current.x + r >= height)
+
+            if (current.x == end_tile.x && current.y == end_tile.y) {
+                success = true;
+                break;
+            }
+
+            for (int[] neighbor: neighbors) {
+                // If the neighbor is out-of-bound or is a blocker, skip to next
+                if (current.x+neighbor[0] < 0 || current.x+neighbor[0] >= height || current.y+neighbor[1] < 0 || current.y+neighbor[1] >= width)
                     continue;
-                for (int c=-1;c<2;++c) {
-                    if (current.y + c < 0 || current.y + c >= width)
-                        continue;
-                    if (r == 0 && c == 0)
-                        continue;
+                else if (map[current.x+neighbor[0]][current.y+neighbor[1]] == 1)
+                    continue;
 
-                    // If already explored, skip to next element
-                    if (explored.contains(cordMatrix[current.x+r][current.y+c]) || toBeExplored.contains(cordMatrix[current.x+r][current.y+c])) {
-                        continue;
-                    }
+                next = cord_list[current.x+neighbor[0]][current.y+neighbor[1]];
+                new_cost = cost_so_far.get(current) + 1;
 
-                    // If not a barricade tile, add to queue
-                    if (map[current.x+r][current.y+c] == 0 || map[current.x+r][current.y+c] == 2) {
-                        // System.out.println("Adding (" + (current.x+r) + "," + (current.y+c) + ")");
-                        cordMatrix[current.x+r][current.y+c].incrementG();
-                        toBeExplored.add(cordMatrix[current.x+r][current.y+c]);
-                    }
+                // If neighbor is not explored, or current iteration have better f value
+                if (!cost_so_far.containsKey(next) || new_cost < cost_so_far.get(next)) {
+                    // Add neighbor to frontier
+                    cost_so_far.put(next, new_cost);
+                    f = new_cost + manhattan_distance(next, end_tile);
+                    frontier.enqueue(f, next);
                 }
             }
-
-            explored.add(current);
-            if (displayEachStep)
-                System.out.println(printCurrent(current) + "\n");
         }
 
         long end = System.currentTimeMillis();
-        if (completed)
-            System.out.println("AI have reached the destination!");
+        if (success)
+            System.out.println("AI have reached the destination!\n");
         else
-            System.out.println("There is no path that lead to destination");
+            System.out.println("Failed to reach the destination\n");
 
         System.out.println("Search completed. Time elapsed: " + (end-start) + " ms.");
         System.out.println("Total iteration used: " + numIteration);
+
     }
 
     /**
@@ -407,7 +422,7 @@ public class Maze {
      * @return double represent the manhattan distance between two
      */
     private static double manhattan_distance(Cord src, Cord dest) {
-        return (Math.abs(src.x-dest.x) + Math.abs(src.y-dest.y));
+        return Math.abs(src.x-dest.x) + Math.abs(src.y-dest.y);
     }
 
     /**
@@ -418,19 +433,6 @@ public class Maze {
      */
     private static double euclidean_distance(Cord src, Cord dest) {
         return Math.sqrt(Math.pow(src.x-dest.x, 2) + Math.pow(src.y-dest.y, 2));
-    }
-
-    /**
-     * Comparator function for priority queue in A*
-     * @param c1 first cord
-     * @param c2 second cord
-     * @return less than 0 - c1 < c2, equal to 0 - c1 == c2, greater than 0 - c1 > c2
-     */
-    private static int compare_prio(Cord c1, Cord c2) {
-        double c1_prio = c1.g + manhattan_distance(c1, end_tile);
-        double c2_prio = c2.g + manhattan_distance(c2, end_tile);
-
-        return Double.compare(c1_prio, c2_prio);
     }
 
 }
